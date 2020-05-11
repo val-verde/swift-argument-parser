@@ -144,8 +144,9 @@ internal struct HelpGenerator {
         let synopsis: String
         let description: String
         
-        if i < args.count - 1 && args[i + 1].help.keys == arg.help.keys {
-          // If the next argument has the same keys as this one, we have a group of arguments to output together
+        if args[i].help.isComposite {
+          // If this argument is composite, we have a group of arguments to
+          // output together.
           var groupedArgs = [arg]
           let defaultValue = arg.help.defaultValue.map { "(default: \($0))" } ?? ""
           while i < args.count - 1 && args[i + 1].help.keys == arg.help.keys {
@@ -190,6 +191,10 @@ internal struct HelpGenerator {
       }
     }
     
+    if commandStack.contains(where: { !$0.configuration.version.isEmpty }) {
+      optionElements.append(.init(label: "--version", abstract: "Show the version."))
+    }
+
     let helpLabels = commandStack
       .first!
       .getHelpNames()
@@ -198,7 +203,7 @@ internal struct HelpGenerator {
     if !helpLabels.isEmpty {
       optionElements.append(.init(label: helpLabels, abstract: "Show help information."))
     }
-    
+
     let subcommandElements: [Section.Element] =
       commandStack.last!.configuration.subcommands.compactMap { command in
         guard command.configuration.shouldDisplay else { return nil }

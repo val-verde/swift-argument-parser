@@ -12,6 +12,7 @@
 /// Gets thrown while parsing and will be handled by the error output generation.
 enum ParserError: Error {
   case helpRequested
+  case versionRequested
   case notImplemented
   case invalidState
   case unknownOption(InputOrigin.Element, Name)
@@ -24,7 +25,7 @@ enum ParserError: Error {
   case duplicateExclusiveValues(previous: InputOrigin, duplicate: InputOrigin, originalInput: [String])
   /// We need a value for the given key, but it’s not there. Some non-optional option or argument is missing.
   case noValue(forKey: InputKey)
-  case unableToParseValue(InputOrigin, Name?, String, forKey: InputKey)
+  case unableToParseValue(InputOrigin, Name?, String, forKey: InputKey, originalError: Error? = nil)
   case missingSubcommand
   case userValidationError(Error)
 }

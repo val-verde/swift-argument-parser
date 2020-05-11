@@ -81,7 +81,8 @@ extension Option where Value: ExpressibleByArgument {
   ///
   /// - Parameters:
   ///   - name: A specification for what names are allowed for this flag.
-  ///   - initial: A default value to use for this property.
+  ///   - initial: A default value to use for this property. If `initial` is
+  ///     `nil`, this option and value are required from the user.
   ///   - help: Information about how to use this option.
   public init(
     name: NameSpecification = .long,
@@ -227,7 +228,8 @@ extension Option {
   ///
   /// - Parameters:
   ///   - name: A specification for what names are allowed for this flag.
-  ///   - initial: A default value to use for this property.
+  ///   - initial: A default value to use for this property. If `initial` is
+  ///     `nil`, this option and value are required from the user.
   ///   - help: Information about how to use this option.
   ///   - transform: A closure that converts a string into this property's
   ///     type or throws an error.
@@ -242,8 +244,13 @@ extension Option {
       let kind = ArgumentDefinition.Kind.name(key: key, specification: name)
       let help = ArgumentDefinition.Help(options: initial != nil ? .isOptional : [], help: help, key: key)
       var arg = ArgumentDefinition(kind: kind, help: help, parsingStrategy: ArgumentDefinition.ParsingStrategy(parsingStrategy), update: .unary({
-        (origin, _, valueString, parsedValues) in
-        parsedValues.set(try transform(valueString), forKey: key, inputOrigin: origin)
+        (origin, name, valueString, parsedValues) in
+        do {
+          let transformedValue = try transform(valueString)
+          parsedValues.set(transformedValue, forKey: key, inputOrigin: origin)
+        } catch {
+          throw ParserError.unableToParseValue(origin, name, valueString, forKey: key, originalError: error)
+        }
       }), initial: { origin, values in
         if let v = initial {
           values.set(v, forKey: key, inputOrigin: origin)
@@ -302,13 +309,16 @@ extension Option {
       let help = ArgumentDefinition.Help(options: [.isOptional, .isRepeating], help: help, key: key)
       let arg = ArgumentDefinition(kind: kind, help: help, parsingStrategy: ArgumentDefinition.ParsingStrategy(parsingStrategy), update: .unary({
         (origin, name, valueString, parsedValues) in
-        let element = try transform(valueString)
-        parsedValues.update(forKey: key, inputOrigin: origin, initial: [Element](), closure: {
-          $0.append(element)
-        })
-      }),
-                                   initial: { origin, values in
-                                    values.set([], forKey: key, inputOrigin: origin)
+        do {
+          let transformedElement = try transform(valueString)
+          parsedValues.update(forKey: key, inputOrigin: origin, initial: [Element](), closure: {
+                $0.append(transformedElement)
+          })
+        } catch {
+            throw ParserError.unableToParseValue(origin, name, valueString, forKey: key, originalError: error)
+        }
+      }), initial: { origin, values in
+            values.set([], forKey: key, inputOrigin: origin)
       })
       return ArgumentSet(alternatives: [arg])
       })

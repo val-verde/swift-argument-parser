@@ -143,3 +143,120 @@ extension SubcommandEndToEndTests {
   }
 }
 
+// MARK: Nested Command Arguments Validated
+
+struct BaseCommand: ParsableCommand {
+  enum BaseCommandError: Error {
+    case baseCommandFailure
+    case subCommandFailure
+  }
+
+  static let baseFlagValue = "base"
+
+  static var configuration = CommandConfiguration(
+    commandName: "base",
+    subcommands: [SubCommand.self]
+  )
+
+  @Option()
+  var baseFlag: String
+
+  mutating func validate() throws {
+    guard baseFlag == BaseCommand.baseFlagValue else {
+      throw BaseCommandError.baseCommandFailure
+    }
+  }
+}
+
+extension BaseCommand {
+  struct SubCommand : ParsableCommand {
+    static let subFlagValue = "sub"
+    
+    static var configuration = CommandConfiguration(
+      commandName: "sub",
+      subcommands: [SubSubCommand.self]
+    )
+
+    @Option()
+    var subFlag: String
+
+    mutating func validate() throws {
+      guard subFlag == SubCommand.subFlagValue else {
+        throw BaseCommandError.subCommandFailure
+      }
+    }
+  }
+}
+
+extension BaseCommand.SubCommand {
+  struct SubSubCommand : ParsableCommand, TestableParsableArguments {
+    let didValidateExpectation = XCTestExpectation(singleExpectation: "did validate subcommand")
+
+    static var configuration = CommandConfiguration(
+      commandName: "subsub"
+    )
+
+    @Flag()
+    var subSubFlag: Bool
+
+    private enum CodingKeys: CodingKey {
+      case subSubFlag
+    }
+  }
+}
+
+extension SubcommandEndToEndTests {
+  func testValidate_subcommands() {
+    // provide a value to base-flag that will throw
+    AssertErrorMessage(
+      BaseCommand.self,
+      ["--base-flag", "foo", "sub", "--sub-flag", "foo", "subsub"],
+      "baseCommandFailure"
+    )
+
+    // provide a value to sub-flag that will throw
+    AssertErrorMessage(
+      BaseCommand.self,
+      ["--base-flag", BaseCommand.baseFlagValue, "sub", "--sub-flag", "foo", "subsub"],
+      "subCommandFailure"
+    )
+
+    // provide a valid command and make sure both validates succeed
+    AssertParseCommand(BaseCommand.self,
+                       BaseCommand.SubCommand.SubSubCommand.self,
+                       ["--base-flag", BaseCommand.baseFlagValue, "sub", "--sub-flag", BaseCommand.SubCommand.subFlagValue, "subsub", "--sub-sub-flag"]) { cmd in
+                        XCTAssertTrue(cmd.subSubFlag)
+
+                        // make sure that the instance of SubSubCommand provided
+                        // had its validate method called, not just that any instance of SubSubCommand was validated
+                        wait(for: [cmd.didValidateExpectation], timeout: 0.1)
+    }
+  }
+}
+
+// MARK: Version flags
+
+private struct A: ParsableCommand {
+  static var configuration = CommandConfiguration(
+    version: "1.0.0",
+    subcommands: [HasVersionFlag.self, NoVersionFlag.self])
+  
+  struct HasVersionFlag: ParsableCommand {
+    @Flag() var version: Bool
+  }
+  
+  struct NoVersionFlag: ParsableCommand {
+    @Flag() var hello: Bool
+  }
+}
+
+extension SubcommandEndToEndTests {
+  func testParsingVersionFlags() throws {
+    AssertErrorMessage(A.self, ["--version"], "1.0.0")
+    AssertErrorMessage(A.self, ["no-version-flag", "--version"], "1.0.0")
+
+    AssertParseCommand(A.self, A.HasVersionFlag.self, ["has-version-flag", "--version"]) { cmd in
+      XCTAssertTrue(cmd.version)
+    }
+  }
+}

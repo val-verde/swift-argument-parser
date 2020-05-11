@@ -63,9 +63,17 @@ extension CommandParser {
   
   /// Throws a `HelpRequested` error if the user has specified either of the
   /// built in help flags.
-  func checkForHelpFlag(_ split: SplitArguments) throws {
+  func checkForBuiltInFlags(_ split: SplitArguments) throws {
+    // Look for help flags
     guard !split.contains(anyOf: self.commandTree.element.getHelpNames()) else {
       throw HelpRequested()
+    }
+
+    // Look for --version if any commands in the stack define a version
+    if commandStack.contains(where: { !$0.configuration.version.isEmpty }) {
+      guard !split.contains(Name.long("version")) else {
+        throw CommandError(commandStack: commandStack, parserError: .versionRequested)
+      }
     }
   }
   
@@ -74,7 +82,7 @@ extension CommandParser {
   /// If there are remaining arguments or if no commands have been parsed,
   /// this throws an error.
   fileprivate func extractLastParsedValue(_ split: SplitArguments) throws -> ParsableCommand {
-    try checkForHelpFlag(split)
+    try checkForBuiltInFlags(split)
     
     // We should have used up all arguments at this point:
     guard split.isEmpty else {
@@ -98,7 +106,7 @@ extension CommandParser {
   
   /// Extracts the current command from `split`, throwing if decoding isn't
   /// possible.
-  fileprivate mutating func parseCurrent(_ split: inout SplitArguments) throws {
+  fileprivate mutating func parseCurrent(_ split: inout SplitArguments) throws -> ParsableCommand {
     // Build the argument set (i.e. information on how to parse):
     let commandArguments = ArgumentSet(currentNode.element)
     
@@ -124,7 +132,7 @@ extension CommandParser {
     } catch let error {
       // If decoding this command failed, see if they were asking for
       // help before propagating that parsing failure.
-      try checkForHelpFlag(split)
+      try checkForBuiltInFlags(split)
       throw error
     }
     
@@ -137,14 +145,23 @@ extension CommandParser {
       .filter { prev in !decodedArguments.contains(where: { $0.type == prev.type })}
     decodedArguments.append(contentsOf: newDecodedValues)
     decodedArguments.append(DecodedArguments(type: currentNode.element, value: decodedResult))
+
+    return decodedResult
   }
   
   /// Starting with the current node, extracts commands out of `split` and
   /// descends into subcommands as far as possible.
   internal mutating func descendingParse(_ split: inout SplitArguments) throws {
     while true {
-      try parseCurrent(&split)
-      
+      var parsedCommand = try parseCurrent(&split)
+
+      // after decoding a command, make sure to validate it
+      do {
+        try parsedCommand.validate()
+      } catch {
+        throw CommandError(commandStack: commandStack, parserError: ParserError.userValidationError(error))
+      }
+
       // Look for next command in the argument list.
       if let nextCommand = consumeNextCommand(split: &split) {
         currentNode = nextCommand
@@ -152,7 +169,7 @@ extension CommandParser {
       }
       
       // Look for the help flag before falling back to a default command.
-      try checkForHelpFlag(split)
+      try checkForBuiltInFlags(split)
       
       // No command was found, so fall back to the default subcommand.
       if let defaultSubcommand = currentNode.element.configuration.defaultSubcommand {
@@ -238,6 +255,18 @@ extension CommandParser {
 }
 
 extension SplitArguments {
+  func contains(_ needle: Name) -> Bool {
+    self.elements.contains {
+      switch $0.element {
+      case .option(.name(let name)),
+           .option(.nameWithValue(let name, _)):
+        return name == needle
+      default:
+        return false
+      }
+    }
+  }
+
   func contains(anyOf names: [Name]) -> Bool {
     self.elements.contains {
       switch $0.element {
