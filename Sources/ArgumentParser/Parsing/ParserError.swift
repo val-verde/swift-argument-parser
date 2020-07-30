@@ -13,6 +13,11 @@
 enum ParserError: Error {
   case helpRequested
   case versionRequested
+  
+  case completionScriptRequested(shell: String?)
+  case completionScriptCustomResponse(String)
+  case unsupportedShell(String? = nil)
+  
   case notImplemented
   case invalidState
   case unknownOption(InputOrigin.Element, Name)
@@ -28,6 +33,7 @@ enum ParserError: Error {
   case unableToParseValue(InputOrigin, Name?, String, forKey: InputKey, originalError: Error? = nil)
   case missingSubcommand
   case userValidationError(Error)
+  case noArguments(Error)
 }
 
 /// These are errors used internally to the parsing, and will not be exposed to the help generation.

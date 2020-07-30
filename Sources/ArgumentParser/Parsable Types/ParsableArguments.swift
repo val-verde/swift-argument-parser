@@ -52,8 +52,7 @@ struct _WrappedParsableCommand<P: ParsableArguments>: ParsableCommand {
     }
   }
   
-  @OptionGroup()
-  var options: P
+  @OptionGroup var options: P
 }
 
 struct StandardError: TextOutputStream {
@@ -125,6 +124,16 @@ extension ParsableArguments {
     MessageInfo(error: error, type: self).fullText
   }
   
+  /// Returns the text of the help screen for this type.
+  ///
+  /// - Parameter columns: The column width to use when wrapping long lines in
+  ///   the help screen. If `columns` is `nil`, uses the current terminal width,
+  ///   or a default value of `80` if the terminal width is not available.
+  /// - Returns: The full help screen for this type.
+  public static func helpMessage(columns: Int? = nil) -> String {
+    HelpGenerator(self).rendered(screenWidth: columns)
+  }
+
   /// Returns the exit code for the given error.
   ///
   /// The returned code is the same exit code that is used if `error` is passed
@@ -136,6 +145,15 @@ extension ParsableArguments {
     for error: Error
   ) -> ExitCode {
     MessageInfo(error: error, type: self).exitCode
+  }
+    
+  /// Returns a shell completion script for the specified shell.
+  ///
+  /// - Parameter shell: The shell to generate a completion script for.
+  /// - Returns: The completion script for `shell`.
+  public static func completionScript(for shell: CompletionShell) -> String {
+    let completionsGenerator = try! CompletionsGenerator(command: self.asCommand, shell: shell)
+    return completionsGenerator.generateCompletionScript()
   }
 
   /// Terminates execution with a message and exit code that is appropriate

@@ -26,39 +26,39 @@ extension ErrorMessageTests {
   func testMissing_1() {
     AssertErrorMessage(Bar.self, [], "Missing expected argument '--name <name>'")
   }
-  
+
   func testMissing_2() {
     AssertErrorMessage(Bar.self, ["--name", "a"], "Missing expected argument '--format <format>'")
   }
-  
+
   func testUnknownOption_1() {
     AssertErrorMessage(Bar.self, ["--name", "a", "--format", "b", "--verbose"], "Unknown option '--verbose'")
   }
-  
+
   func testUnknownOption_2() {
     AssertErrorMessage(Bar.self, ["--name", "a", "--format", "b", "-q"], "Unknown option '-q'")
   }
-  
+
   func testUnknownOption_3() {
     AssertErrorMessage(Bar.self, ["--name", "a", "--format", "b", "-bar"], "Unknown option '-bar'")
   }
-  
+
   func testUnknownOption_4() {
     AssertErrorMessage(Bar.self, ["--name", "a", "-foz", "b"], "Unknown option '-o'")
   }
-  
+
   func testMissingValue_1() {
     AssertErrorMessage(Bar.self, ["--name", "a", "--format"], "Missing value for '--format <format>'")
   }
-  
+
   func testMissingValue_2() {
     AssertErrorMessage(Bar.self, ["--name", "a", "-f"], "Missing value for '-f <format>'")
   }
-  
+
   func testUnusedValue_1() {
     AssertErrorMessage(Bar.self, ["--name", "a", "--format", "f", "b"], "Unexpected argument 'b'")
   }
-  
+
   func testUnusedValue_2() {
     AssertErrorMessage(Bar.self, ["--name", "a", "--format", "f", "b", "baz"], "2 unexpected arguments: 'b', 'baz'")
   }
@@ -81,8 +81,8 @@ extension ErrorMessageTests {
 }
 
 fileprivate struct Baz: ParsableArguments {
-  @Flag()
-  var verbose: Bool
+  @Flag
+  var verbose: Bool = false
 }
 
 extension ErrorMessageTests {
@@ -94,7 +94,7 @@ extension ErrorMessageTests {
 fileprivate struct Qux: ParsableArguments {
   @Argument()
   var firstNumber: Int
-  
+
   @Option(name: .customLong("number-two"))
   var secondNumber: Int
 }
@@ -103,7 +103,7 @@ extension ErrorMessageTests {
   func testMissingArgument() {
     AssertErrorMessage(Qux.self, ["--number-two", "2"], "Missing expected argument '<first-number>'")
   }
-  
+
   func testInvalidNumber() {
     AssertErrorMessage(Qux.self, ["--number-two", "2", "a"], "The value 'a' is invalid for '<first-number>'")
     AssertErrorMessage(Qux.self, ["--number-two", "a", "1"], "The value 'a' is invalid for '--number-two <number-two>'")
@@ -120,7 +120,7 @@ extension ErrorMessageTests {
     AssertErrorMessage(Qwz.self, ["--nme"], "Unknown option '--nme'. Did you mean '--name'?")
     AssertErrorMessage(Qwz.self, ["-name"], "Unknown option '-name'. Did you mean '--name'?")
   }
-  
+
   func testMispelledArgument_2() {
     AssertErrorMessage(Qwz.self, ["-ttle"], "Unknown option '-ttle'. Did you mean '-title'?")
     AssertErrorMessage(Qwz.self, ["--title"], "Unknown option '--title'. Did you mean '-title'?")
@@ -135,15 +135,31 @@ extension ErrorMessageTests {
   }
 }
 
-private enum OutputBehaviour: String, CaseIterable { case stats, count, list }
 private struct Options: ParsableArguments {
-  @Flag(name: .shortAndLong, default: .list, help: "Program output")
-  var behaviour: OutputBehaviour
+  enum OutputBehaviour: String, EnumerableFlag {
+    case stats, count, list
+
+    static func name(for value: OutputBehaviour) -> NameSpecification {
+      .shortAndLong
+    }
+  }
+
+  @Flag(help: "Program output")
+  var behaviour: OutputBehaviour = .list
 
   @Flag(inversion: .prefixedNo, exclusivity: .exclusive) var bool: Bool
 }
+
 private struct OptOptions: ParsableArguments {
-  @Flag(name: .short, help: "Program output")
+  enum OutputBehaviour: String, EnumerableFlag {
+    case stats, count, list
+
+    static func name(for value: OutputBehaviour) -> NameSpecification {
+      .short
+    }
+  }
+
+  @Flag(help: "Program output")
   var behaviour: OutputBehaviour?
 }
 
@@ -156,5 +172,21 @@ extension ErrorMessageTests {
     AssertErrorMessage(Options.self, ["--no-bool", "--bool"], "Value to be set with flag \'--bool\' had already been set with flag \'--no-bool\'")
 
     AssertErrorMessage(OptOptions.self, ["-cbl"], "Value to be set with flag \'l\' in \'-cbl\' had already been set with flag \'c\' in \'-cbl\'")
+  }
+}
+
+// MARK: -
+
+fileprivate struct Repeat: ParsableArguments {
+  @Option() var count: Int?
+  @Argument() var phrase: String
+}
+
+extension ErrorMessageTests {
+  func testBadOptionBeforeArgument() {
+    AssertErrorMessage(
+      Repeat.self,
+      ["--cont", "5", "Hello"],
+      "Unknown option '--cont'. Did you mean '--count'?")
   }
 }

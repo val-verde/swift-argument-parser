@@ -63,7 +63,7 @@ extension ArgumentDefinition {
     
     switch kind {
     case .named:
-      let joinedSynopsisString = sortedNames
+      let joinedSynopsisString = partitionedNames
         .map { $0.synopsisString }
         .joined(separator: ", ")
       
@@ -113,30 +113,12 @@ extension ArgumentDefinition {
     return unadornedSynopsis
   }
   
-  var sortedNames: [Name] {
-    return names
-      .sorted { (lhs, rhs) -> Bool in
-        switch (lhs, rhs) {
-        case let (.long(l), .long(r)):
-          return l < r
-        case (_, .long):
-          return true
-        case (.long, _):
-          return false
-        case let (.short(l), .short(r)):
-          return l < r
-        case (_, .short):
-          return true
-        case (.short, _):
-          return false
-        case let (.longWithSingleDash(l), .longWithSingleDash(r)):
-          return l < r
-        }
-    }
+  var partitionedNames: [Name] {
+    return names.filter{ $0.isShort } + names.filter{ !$0.isShort }
   }
   
   var preferredNameForSynopsis: Name? {
-    sortedNames.last
+    names.first{ !$0.isShort } ?? names.first
   }
   
   var synopsisValueName: String? {
@@ -176,11 +158,14 @@ struct ErrorMessageGenerator {
 extension ErrorMessageGenerator {
   func makeErrorMessage() -> String? {
     switch error {
-    case .helpRequested:
-      return nil
-    case .versionRequested:
+    case .helpRequested, .versionRequested, .completionScriptRequested, .completionScriptCustomResponse:
       return nil
 
+    case .unsupportedShell(let shell?):
+      return unsupportedShell(shell)
+    case .unsupportedShell:
+      return unsupportedAutodetectedShell
+      
     case .notImplemented:
       return notImplementedMessage
     case .invalidState:
@@ -207,6 +192,15 @@ extension ErrorMessageGenerator {
       return "Missing required subcommand."
     case .userValidationError(let error):
       switch error {
+      case let error as LocalizedError:
+        return error.errorDescription
+      default:
+        return String(describing: error)
+      }
+    case .noArguments(let error):
+      switch error {
+      case let error as ParserError:
+        return ErrorMessageGenerator(arguments: self.arguments, error: error).makeErrorMessage()
       case let error as LocalizedError:
         return error.errorDescription
       default:
@@ -250,6 +244,21 @@ extension ErrorMessageGenerator {
     return "Internal error. Invalid state while parsing command-line arguments."
   }
 
+  var unsupportedAutodetectedShell: String {
+    """
+    Can't autodetect a supported shell.
+    Please use --generate-completion-script=<shell> with one of:
+        \(CompletionShell.allCases.map { $0.rawValue }.joined(separator: " "))
+    """
+  }
+
+  func unsupportedShell(_ shell: String) -> String {
+    """
+    Can't generate completion scripts for '\(shell)'.
+    Please use --generate-completion-script=<shell> with one of:
+        \(CompletionShell.allCases.map { $0.rawValue }.joined(separator: " "))
+    """
+  }
 
   func unknownOptionMessage(origin: InputOrigin.Element, name: Name) -> String {
     if case .short = name {

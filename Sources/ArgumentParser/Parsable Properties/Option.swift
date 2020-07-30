@@ -38,7 +38,21 @@ public struct Option<Value>: Decodable, ParsedWrapper {
   public init(from decoder: Decoder) throws {
     try self.init(_decoder: decoder)
   }
-  
+
+  /// This initializer works around a quirk of property wrappers, where the
+  /// compiler will not see no-argument initializers in extensions. Explicitly
+  /// marking this initializer unavailable means that when `Value` conforms to
+  /// `ExpressibleByArgument`, that overload will be selected instead.
+  ///
+  /// ```swift
+  /// @Option() var foo: String // Syntax without this initializer
+  /// @Option var foo: String   // Syntax with this initializer
+  /// ```
+  @available(*, unavailable, message: "A default value must be provided unless the value type conforms to ExpressibleByArgument.")
+  public init() {
+    fatalError("unavailable")
+  }
+
   /// The value presented by this property wrapper.
   /// :nodoc:
   public var wrappedValue: Value {
@@ -73,22 +87,15 @@ extension Option: DecodableParsedWrapper where Value: Decodable {}
 // MARK: Property Wrapper Initializers
 
 extension Option where Value: ExpressibleByArgument {
-  /// Creates a property that reads its value from a labeled option.
+  /// Creates a property with an optional default value, intended to be called by other constructors to centralize logic.
   ///
-  /// If the property has an `Optional` type, or you provide a non-`nil`
-  /// value for the `initial` parameter, specifying this option is not
-  /// required.
-  ///
-  /// - Parameters:
-  ///   - name: A specification for what names are allowed for this flag.
-  ///   - initial: A default value to use for this property. If `initial` is
-  ///     `nil`, this option and value are required from the user.
-  ///   - help: Information about how to use this option.
-  public init(
-    name: NameSpecification = .long,
-    default initial: Value? = nil,
-    parsing parsingStrategy: SingleValueParsingStrategy = .next,
-    help: ArgumentHelp? = nil
+  /// This private `init` allows us to expose multiple other similar constructors to allow for standard default property initialization while reducing code duplication.
+  private init(
+    name: NameSpecification,
+    initial: Value?,
+    parsingStrategy: SingleValueParsingStrategy,
+    help: ArgumentHelp?,
+    completion: CompletionKind?
   ) {
     self.init(_parsedValue: .init { key in
       ArgumentSet(
@@ -97,8 +104,96 @@ extension Option where Value: ExpressibleByArgument {
         parsingStrategy: ArgumentDefinition.ParsingStrategy(parsingStrategy),
         parseType: Value.self,
         name: name,
-        default: initial, help: help)
-      })
+        default: initial, help: help, completion: completion ?? Value.defaultCompletionKind)
+     }
+    )
+  }
+
+  /// Creates a property that reads its value from a labeled option.
+  ///
+  /// This method is deprecated, with usage split into two other methods below:
+  /// - `init(wrappedValue:name:parsing:help:)` for properties with a default value
+  /// - `init(name:parsing:help:)` for properties with no default value
+  ///
+  /// Existing usage of the `default` parameter should be replaced such as follows:
+  /// ```diff
+  /// -@Option(default: "bar")
+  /// -var foo: String
+  /// +@Option var foo: String = "bar"
+  /// ```
+  ///
+  /// - Parameters:
+  ///   - name: A specification for what names are allowed for this flag.
+  ///   - initial: A default value to use for this property. If `initial` is
+  ///     `nil`, this option and value are required from the user.
+  ///   - parsingStrategy: The behavior to use when looking for this option's
+  ///     value.
+  ///   - help: Information about how to use this option.
+  @available(*, deprecated, message: "Use regular property initialization for default values (`var foo: String = \"bar\"`)")
+  public init(
+    name: NameSpecification = .long,
+    default initial: Value?,
+    parsing parsingStrategy: SingleValueParsingStrategy = .next,
+    help: ArgumentHelp? = nil
+  ) {
+    self.init(
+      name: name,
+      initial: initial,
+      parsingStrategy: parsingStrategy,
+      help: help,
+      completion: nil)
+  }
+
+  /// Creates a property with a default value provided by standard Swift default value syntax.
+  ///
+  /// This method is called to initialize an `Option` with a default value such as:
+  /// ```swift
+  /// @Option var foo: String = "bar"
+  /// ```
+  ///
+  /// - Parameters:
+  ///   - wrappedValue: A default value to use for this property, provided implicitly by the compiler during propery wrapper initialization.
+  ///   - name: A specification for what names are allowed for this flag.
+  ///   - parsingStrategy: The behavior to use when looking for this option's value.
+  ///   - help: Information about how to use this option.
+  public init(
+    wrappedValue: Value,
+    name: NameSpecification = .long,
+    parsing parsingStrategy: SingleValueParsingStrategy = .next,
+    completion: CompletionKind? = nil,
+    help: ArgumentHelp? = nil
+  ) {
+    self.init(
+      name: name,
+      initial: wrappedValue,
+      parsingStrategy: parsingStrategy,
+      help: help,
+      completion: completion)
+  }
+
+  /// Creates a property with no default value.
+  ///
+  /// This method is called to initialize an `Option` without a default value such as:
+  /// ```swift
+  /// @Option var foo: String
+  /// ```
+  ///
+  /// - Parameters:
+  ///   - name: A specification for what names are allowed for this flag.
+  ///   - parsingStrategy: The behavior to use when looking for this option's value.
+  ///   - help: Information about how to use this option.
+  public init(
+    name: NameSpecification = .long,
+    parsing parsingStrategy: SingleValueParsingStrategy = .next,
+    help: ArgumentHelp? = nil,
+    completion: CompletionKind? = nil
+  ) {
+    self.init(
+      name: name,
+      initial: nil,
+      parsingStrategy: parsingStrategy,
+      help: help,
+      completion: completion)
   }
 }
 
@@ -206,11 +301,8 @@ public enum ArrayParsingStrategy {
   /// through the terminator `--`. That is the more common approach. For example:
   /// ```swift
   /// struct Options: ParsableArguments {
-  ///     @Option()
-  ///     var name: String
-  ///
-  ///     @Argument()
-  ///     var remainder: [String]
+  ///     @Option var name: String
+  ///     @Argument var remainder: [String]
   /// }
   /// ```
   /// would parse the input `--name Foo -- Bar --baz` such that the `remainder`
@@ -219,8 +311,7 @@ public enum ArrayParsingStrategy {
 }
 
 extension Option {
-  /// Creates a property that reads its value from a labeled option, parsing
-  /// with the given closure.
+  /// Creates a property that reads its value from a labeled option.
   ///
   /// If the property has an `Optional` type, or you provide a non-`nil`
   /// value for the `initial` parameter, specifying this option is not
@@ -228,22 +319,67 @@ extension Option {
   ///
   /// - Parameters:
   ///   - name: A specification for what names are allowed for this flag.
-  ///   - initial: A default value to use for this property. If `initial` is
-  ///     `nil`, this option and value are required from the user.
+  ///   - parsingStrategy: The behavior to use when looking for this option's
+  ///     value.
   ///   - help: Information about how to use this option.
-  ///   - transform: A closure that converts a string into this property's
-  ///     type or throws an error.
-  public init(
+  public init<T: ExpressibleByArgument>(
     name: NameSpecification = .long,
-    default initial: Value? = nil,
     parsing parsingStrategy: SingleValueParsingStrategy = .next,
     help: ArgumentHelp? = nil,
+    completion: CompletionKind? = nil
+  ) where Value == T? {
+    self.init(_parsedValue: .init { key in
+      var arg = ArgumentDefinition(
+        key: key,
+        kind: .name(key: key, specification: name),
+        parsingStrategy: ArgumentDefinition.ParsingStrategy(parsingStrategy),
+        parser: T.init(argument:),
+        default: nil,
+        completion: completion ?? T.defaultCompletionKind)
+      arg.help.help = help
+      return ArgumentSet(arg.optional)
+    })
+  }
+
+  @available(*, deprecated, message: """
+    Default values don't make sense for optional properties.
+    Remove the 'default' parameter if its value is nil,
+    or make your property non-optional if it's non-nil.
+    """)
+  public init<T: ExpressibleByArgument>(
+    name: NameSpecification = .long,
+    default initial: T?,
+    parsing parsingStrategy: SingleValueParsingStrategy = .next,
+    help: ArgumentHelp? = nil
+  ) where Value == T? {
+    self.init(_parsedValue: .init { key in
+      var arg = ArgumentDefinition(
+        key: key,
+        kind: .name(key: key, specification: name),
+        parsingStrategy: ArgumentDefinition.ParsingStrategy(parsingStrategy),
+        parser: T.init(argument:),
+        default: initial,
+        completion: T.defaultCompletionKind)
+      arg.help.help = help
+      return ArgumentSet(arg.optional)
+    })
+  }
+
+  /// Creates a property with an optional default value, intended to be called by other constructors to centralize logic.
+  ///
+  /// This private `init` allows us to expose multiple other similar constructors to allow for standard default property initialization while reducing code duplication.
+  private init(
+    name: NameSpecification,
+    initial: Value?,
+    parsingStrategy: SingleValueParsingStrategy,
+    help: ArgumentHelp?,
+    completion: CompletionKind?,
     transform: @escaping (String) throws -> Value
   ) {
     self.init(_parsedValue: .init { key in
       let kind = ArgumentDefinition.Kind.name(key: key, specification: name)
       let help = ArgumentDefinition.Help(options: initial != nil ? .isOptional : [], help: help, key: key)
-      var arg = ArgumentDefinition(kind: kind, help: help, parsingStrategy: ArgumentDefinition.ParsingStrategy(parsingStrategy), update: .unary({
+      var arg = ArgumentDefinition(kind: kind, help: help, completion: completion ?? .default, parsingStrategy: ArgumentDefinition.ParsingStrategy(parsingStrategy), update: .unary({
         (origin, name, valueString, parsedValues) in
         do {
           let transformedValue = try transform(valueString)
@@ -256,71 +392,215 @@ extension Option {
           values.set(v, forKey: key, inputOrigin: origin)
         }
       })
+      arg.help.options.formUnion(ArgumentDefinition.Help.Options(type: Value.self))
       arg.help.defaultValue = initial.map { "\($0)" }
       return ArgumentSet(alternatives: [arg])
       })
   }
-  
-  /// Creates an array property that reads its values from zero or more
-  /// labeled options.
+
+  /// Creates a property that reads its value from a labeled option, parsing
+  /// with the given closure.
   ///
-  /// This property defaults to an empty array.
+  /// This method is deprecated, with usage split into two other methods below:
+  /// - `init(wrappedValue:name:parsing:help:transform:)` for properties with a default value
+  /// - `init(name:parsing:help:transform:)` for properties with no default value
+  ///
+  /// Existing usage of the `default` parameter should be replaced such as follows:
+  /// ```diff
+  /// -@Option(default: "bar", transform: baz)
+  /// -var foo: String
+  /// +@Option(transform: baz)
+  /// +var foo: String = "bar"
+  /// ```
   ///
   /// - Parameters:
   ///   - name: A specification for what names are allowed for this flag.
+  ///   - initial: A default value to use for this property. If `initial` is
+  ///     `nil`, this option and value are required from the user.
+  ///   - parsingStrategy: The behavior to use when looking for this option's
+  ///     value.
+  ///   - help: Information about how to use this option.
+  ///   - transform: A closure that converts a string into this property's
+  ///     type or throws an error.
+  @available(*, deprecated, message: "Use regular property initialization for default values (`var foo: String = \"bar\"`)")
+  public init(
+    name: NameSpecification = .long,
+    default initial: Value?,
+    parsing parsingStrategy: SingleValueParsingStrategy = .next,
+    help: ArgumentHelp? = nil,
+    transform: @escaping (String) throws -> Value
+  ) {
+     self.init(
+      name: name,
+      initial: initial,
+      parsingStrategy: parsingStrategy,
+      help: help,
+      completion: nil,
+      transform: transform
+    )
+  }
+
+  /// Creates a property with a default value provided by standard Swift default value syntax, parsing with the given closure.
+  ///
+  /// This method is called to initialize an `Option` with a default value such as:
+  /// ```swift
+  /// @Option(transform: baz)
+  /// var foo: String = "bar"
+  /// ```
+  /// - Parameters:
+  ///   - wrappedValue: A default value to use for this property, provided implicitly by the compiler during property wrapper initialization.
+  ///   - name: A specification for what names are allowed for this flag.
+  ///   - parsingStrategy: The behavior to use when looking for this option's value.
+  ///   - help: Information about how to use this option.
+  ///   - transform: A closure that converts a string into this property's type or throws an error.
+  public init(
+    wrappedValue: Value,
+    name: NameSpecification = .long,
+    parsing parsingStrategy: SingleValueParsingStrategy = .next,
+    help: ArgumentHelp? = nil,
+    completion: CompletionKind? = nil,
+    transform: @escaping (String) throws -> Value
+  ) {
+    self.init(
+      name: name,
+      initial: wrappedValue,
+      parsingStrategy: parsingStrategy,
+      help: help,
+      completion: completion,
+      transform: transform
+    )
+  }
+
+  /// Creates a property with no default value, parsing with the given closure.
+  ///
+  /// This method is called to initialize an `Option` with no default value such as:
+  /// ```swift
+  /// @Option(transform: baz)
+  /// var foo: String
+  /// ```
+  ///
+  /// - Parameters:
+  ///   - name: A specification for what names are allowed for this flag.
+  ///   - parsingStrategy: The behavior to use when looking for this option's value.
+  ///   - help: Information about how to use this option.
+  ///   - transform: A closure that converts a string into this property's type or throws an error.
+  public init(
+    name: NameSpecification = .long,
+    parsing parsingStrategy: SingleValueParsingStrategy = .next,
+    help: ArgumentHelp? = nil,
+    completion: CompletionKind? = nil,
+    transform: @escaping (String) throws -> Value
+  ) {
+    self.init(
+      name: name,
+      initial: nil,
+      parsingStrategy: parsingStrategy,
+      help: help,
+      completion: completion,
+      transform: transform
+    )
+  }
+
+  /// Creates an array property that reads its values from zero or more
+  /// labeled options.
+  ///
+  /// - Parameters:
+  ///   - name: A specification for what names are allowed for this flag.
+  ///   - initial: A default value to use for this property.
   ///   - parsingStrategy: The behavior to use when parsing multiple values
   ///     from the command-line arguments.
   ///   - help: Information about how to use this option.
   public init<Element>(
+    wrappedValue: [Element],
     name: NameSpecification = .long,
     parsing parsingStrategy: ArrayParsingStrategy = .singleValue,
-    help: ArgumentHelp? = nil
+    help: ArgumentHelp? = nil,
+    completion: CompletionKind? = nil
   ) where Element: ExpressibleByArgument, Value == Array<Element> {
     self.init(_parsedValue: .init { key in
       let kind = ArgumentDefinition.Kind.name(key: key, specification: name)
       let help = ArgumentDefinition.Help(options: [.isOptional, .isRepeating], help: help, key: key)
-      let arg = ArgumentDefinition(kind: kind, help: help, parsingStrategy: ArgumentDefinition.ParsingStrategy(parsingStrategy), update: .appendToArray(forType: Element.self, key: key), initial: { origin, values in
-        values.set([], forKey: key, inputOrigin: origin)
-      })
+      var arg = ArgumentDefinition(
+        kind: kind,
+        help: help,
+        completion: completion ?? Element.defaultCompletionKind,
+        parsingStrategy: ArgumentDefinition.ParsingStrategy(parsingStrategy),
+        update: .appendToArray(forType: Element.self, key: key),
+        initial: { origin, values in
+          values.set(wrappedValue, forKey: key, inputOrigin: origin)
+        }
+      )
+      arg.help.defaultValue = !wrappedValue.isEmpty ? wrappedValue.defaultValueDescription : nil
       return ArgumentSet(alternatives: [arg])
-      })
+    })
   }
   
   /// Creates an array property that reads its values from zero or more
   /// labeled options, parsing with the given closure.
   ///
-  /// This property defaults to an empty array.
+  /// This property defaults to an empty array if the `initial` parameter
+  /// is not specified.
   ///
   /// - Parameters:
   ///   - name: A specification for what names are allowed for this flag.
+  ///   - initial: A default value to use for this property. If `initial` is
+  ///     `nil`, this option defaults to an empty array.
   ///   - parsingStrategy: The behavior to use when parsing multiple values
   ///     from the command-line arguments.
   ///   - help: Information about how to use this option.
   ///   - transform: A closure that converts a string into this property's
   ///     element type or throws an error.
   public init<Element>(
+    wrappedValue: [Element],
     name: NameSpecification = .long,
     parsing parsingStrategy: ArrayParsingStrategy = .singleValue,
     help: ArgumentHelp? = nil,
+    completion: CompletionKind? = nil,
     transform: @escaping (String) throws -> Element
   ) where Value == Array<Element> {
     self.init(_parsedValue: .init { key in
       let kind = ArgumentDefinition.Kind.name(key: key, specification: name)
       let help = ArgumentDefinition.Help(options: [.isOptional, .isRepeating], help: help, key: key)
-      let arg = ArgumentDefinition(kind: kind, help: help, parsingStrategy: ArgumentDefinition.ParsingStrategy(parsingStrategy), update: .unary({
-        (origin, name, valueString, parsedValues) in
-        do {
-          let transformedElement = try transform(valueString)
-          parsedValues.update(forKey: key, inputOrigin: origin, initial: [Element](), closure: {
-                $0.append(transformedElement)
-          })
-        } catch {
+      var arg = ArgumentDefinition(
+        kind: kind,
+        help: help,
+        completion: completion ?? .default,
+        parsingStrategy: ArgumentDefinition.ParsingStrategy(parsingStrategy),
+        update: .unary({ (origin, name, valueString, parsedValues) in
+          do {
+            let transformedElement = try transform(valueString)
+            parsedValues.update(forKey: key, inputOrigin: origin, initial: [Element](), closure: {
+                  $0.append(transformedElement)
+            })
+          } catch {
             throw ParserError.unableToParseValue(origin, name, valueString, forKey: key, originalError: error)
+          }
+        }),
+        initial: { origin, values in
+          values.set(wrappedValue, forKey: key, inputOrigin: origin)
         }
-      }), initial: { origin, values in
-            values.set([], forKey: key, inputOrigin: origin)
-      })
+      )
+      arg.help.defaultValue = !wrappedValue.isEmpty ? "\(wrappedValue)" : nil
       return ArgumentSet(alternatives: [arg])
-      })
+    })
+  }
+  
+  @available(*, deprecated, message: "Provide an empty array literal as a default value.")
+  public init<Element>(
+    name: NameSpecification = .long,
+    parsing parsingStrategy: ArrayParsingStrategy = .singleValue,
+    help: ArgumentHelp? = nil
+  ) where Element: ExpressibleByArgument, Value == Array<Element> {
+    self.init(wrappedValue: [], name: name, parsing: parsingStrategy, help: help)
+  }
+  
+  @available(*, deprecated, message: "Provide an empty array literal as a default value.")
+  public init<Element>(
+    name: NameSpecification = .long,
+    parsing parsingStrategy: ArrayParsingStrategy = .singleValue,
+    help: ArgumentHelp? = nil,
+    transform: @escaping (String) throws -> Element
+  ) where Value == Array<Element> {
+    self.init(wrappedValue: [], name: name, parsing: parsingStrategy, help: help, transform: transform)
   }
 }

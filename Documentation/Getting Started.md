@@ -19,7 +19,7 @@ import PackageDescription
 let package = Package(
     name: "random",
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "0.0.1"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "0.2.0"),
     ],
     targets: [
         .target(
@@ -46,13 +46,10 @@ We'll define the initial version of the command as a type that conforms to the `
 import ArgumentParser
 
 struct Count: ParsableCommand {
-    @Argument()
-    var inputFile: String
-
-    @Argument()
-    var outputFile: String
+    @Argument var inputFile: String
+    @Argument var outputFile: String
     
-    func run() throws {
+    mutating func run() throws {
         print("""
             Counting words in '\(inputFile)' \
             and writing the result into '\(outputFile)'.
@@ -85,13 +82,10 @@ We do this by using the `@Option` property wrapper instead of `@Argument`:
 
 ```swift
 struct Count: ParsableCommand {
-    @Option()
-    var inputFile: String
-
-    @Option()
-    var outputFile: String
+    @Option var inputFile: String
+    @Option var outputFile: String
     
-    func run() throws {
+    mutating func run() throws {
         print("""
             Counting words in '\(inputFile)' \
             and writing the result into '\(outputFile)'.
@@ -126,16 +120,11 @@ Let's change our `Count` type to look like this:
 
 ```swift
 struct Count: ParsableCommand {
-    @Option()
-    var inputFile: String
-
-    @Option()
-    var outputFile: String
-
-    @Flag()
-    var verbose: Bool
+    @Option var inputFile: String
+    @Option var outputFile: String
+    @Flag var verbose = false
     
-    func run() throws {
+    mutating func run() throws {
         if verbose {
             print("""
                 Counting words in '\(inputFile)' \
@@ -175,9 +164,9 @@ struct Count: ParsableCommand {
     var outputFile: String
 
     @Flag(name: .shortAndLong)
-    var verbose: Bool
+    var verbose = false
     
-    func run() throws { ... }
+    mutating func run() throws { ... }
 }
 ```
 
@@ -209,9 +198,9 @@ struct Count: ParsableCommand {
     var outputFile: String
 
     @Flag(name: .shortAndLong, help: "Print status updates while counting.")
-    var verbose: Bool
+    var verbose = false
 
-    func run() throws { ... }
+    mutating func run() throws { ... }
 }
 ```
 
@@ -244,9 +233,9 @@ struct Count: ParsableCommand {
     var outputFile: String
 
     @Flag(name: .shortAndLong, help: "Print status updates while counting.")
-    var verbose: Bool
+    var verbose = false
 
-    func run() throws {
+    mutating func run() throws {
         if verbose {
             print("""
                 Counting words in '\(inputFile)' \

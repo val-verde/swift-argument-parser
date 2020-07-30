@@ -13,7 +13,7 @@ import ArgumentParser
 
 struct Repeat: ParsableCommand {
     @Flag(help: "Include a counter with each repetition.")
-    var includeCounter: Bool
+    var includeCounter = false
 
     @Option(name: .shortAndLong, help: "The number of times to repeat 'phrase'.")
     var count: Int?
@@ -21,7 +21,7 @@ struct Repeat: ParsableCommand {
     @Argument(help: "The phrase to repeat.")
     var phrase: String
 
-    func run() throws {
+    mutating func run() throws {
         let repeatCount = count ?? .max
 
         for i in 1...repeatCount {
@@ -51,9 +51,10 @@ $ repeat hello --count 3
 hello
 hello
 hello
-$ repeat
-Error: Missing required value for argument 'phrase'.
+$ repeat --count 3
+Error: Missing expected argument 'phrase'.
 Usage: repeat [--count <count>] [--include-counter] <phrase>
+  See 'repeat --help' for more information.
 $ repeat --help
 USAGE: repeat [--count <count>] [--include-counter] <phrase>
 
@@ -87,7 +88,7 @@ To use the `ArgumentParser` library in a SwiftPM project,
 add the following line to the dependencies in your `Package.swift` file:
 
 ```swift
-.package(url: "https://github.com/apple/swift-argument-parser", from: "0.0.1"),
+.package(url: "https://github.com/apple/swift-argument-parser", from: "0.2.0"),
 ```
 
 Because `ArgumentParser` is under active development,
@@ -96,7 +97,7 @@ If you don't want potentially source-breaking package updates,
 use this dependency specification instead:
 
 ```swift
-.package(url: "https://github.com/apple/swift-argument-parser", .upToNextMinor(from: "0.0.1")),
+.package(url: "https://github.com/apple/swift-argument-parser", .upToNextMinor(from: "0.2.0")),
 ```
 
 Finally, include `"ArgumentParser"` as a dependency for your executable target:
@@ -105,7 +106,7 @@ Finally, include `"ArgumentParser"` as a dependency for your executable target:
 let package = Package(
     // name, platforms, products, etc.
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser", from: "0.0.1"),
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "0.2.0"),
         // other dependencies
     ],
     targets: [

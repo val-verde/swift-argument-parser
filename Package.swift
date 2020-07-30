@@ -1,4 +1,4 @@
-// swift-tools-version:5.1
+// swift-tools-version:5.2
 //===----------------------------------------------------------*- swift -*-===//
 //
 // This source file is part of the Swift Argument Parser open source project
@@ -40,6 +40,11 @@ var package = Package(
             name: "repeat",
             dependencies: ["ArgumentParser"],
             path: "Examples/repeat"),
+
+        .target(
+            name: "changelog-authors",
+            dependencies: ["ArgumentParser"],
+            path: "Tools/changelog-authors"),
 
         .testTarget(
             name: "ArgumentParserEndToEndTests",

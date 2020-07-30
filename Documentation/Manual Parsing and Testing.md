@@ -12,11 +12,8 @@ Let's implement the `Select` command discussed in [Validation and Errors](valida
 
 ```swift
 struct SelectOptions: ParsableArguments {
-    @Option(default: 1)
-    var count: Int
-    
-    @Argument()
-    var elements: [String]
+    @Option var count: Int = 1
+    @Argument var elements: [String] = []
 }
 ```
 
@@ -39,7 +36,7 @@ guard let options.elements.count >= options.count else {
 
 As you would expect, the `exit(withError:)` method includes usage information when you pass it a `ValidationError`.
 
-Finally, we print out the requested number of elements: 
+Finally, we print out the requested number of elements:
 
 ```swift
 let chosen = options.elements
@@ -56,10 +53,10 @@ Let's see how this works by using the `Math` command and subcommands defined in 
 
 ```swift
 do {
-    let command = try Math.parseAsRoot()
+    var command = try Math.parseAsRoot()
 
     switch command {
-    case let command as Math.Add:
+    case var command as Math.Add:
         print("You chose to add \(command.options.values.count) values.")
         command.run()
     default:

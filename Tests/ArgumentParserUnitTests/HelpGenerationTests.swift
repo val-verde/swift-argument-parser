@@ -38,7 +38,7 @@ extension HelpGenerationTests {
     @Option(help: "Your name") var name: String
     @Option(help: "Your title") var title: String?
   }
-  
+
   func testHelp() {
     AssertHelp(for: A.self, equals: """
             USAGE: a --name <name> [--title <title>]
@@ -47,19 +47,19 @@ extension HelpGenerationTests {
               --name <name>           Your name
               --title <title>         Your title
               -h, --help              Show help information.
-            
+
             """)
   }
-  
+
   struct B: ParsableArguments {
     @Option(help: "Your name") var name: String
     @Option(help: "Your title") var title: String?
-    
+
     @Argument(help: .hidden) var hiddenName: String?
     @Option(help: .hidden) var hiddenTitle: String?
-    @Flag(help: .hidden) var hiddenFlag: Bool
+    @Flag(help: .hidden) var hiddenFlag: Bool = false
   }
-  
+
   func testHelpWithHidden() {
     AssertHelp(for: B.self, equals: """
             USAGE: b --name <name> [--title <title>]
@@ -68,16 +68,16 @@ extension HelpGenerationTests {
               --name <name>           Your name
               --title <title>         Your title
               -h, --help              Show help information.
-            
+
             """)
   }
-  
+
   struct C: ParsableArguments {
     @Option(help: ArgumentHelp("Your name.",
                                discussion: "Your name is used to greet you and say hello."))
     var name: String
   }
-  
+
   func testHelpWithDiscussion() {
     AssertHelp(for: C.self, equals: """
             USAGE: c --name <name>
@@ -91,14 +91,14 @@ extension HelpGenerationTests {
   }
 
   struct Issue27: ParsableArguments {
-    @Option(default: "42")
-    var two: String
+    @Option
+    var two: String = "42"
     @Option(help: "The third option")
     var three: String
-    @Option(default: nil, help: "A fourth option")
+    @Option(help: "A fourth option")
     var four: String?
-    @Option(default: "", help: "A fifth option")
-    var five: String
+    @Option(help: "A fifth option")
+    var five: String = ""
   }
 
   func testHelpWithDefaultValueButNoDiscussion() {
@@ -115,7 +115,7 @@ extension HelpGenerationTests {
             """)
   }
 
-  enum OptionFlags: String, CaseIterable { case optional, required }
+  enum OptionFlags: String, EnumerableFlag { case optional, required }
   enum Degree {
     case bachelor, master, doctor
     static func degreeTransform(_ string: String) throws -> Degree {
@@ -132,36 +132,38 @@ extension HelpGenerationTests {
     }
   }
 
-
   struct D: ParsableCommand {
-    @Argument(default: "--", help: "Your occupation.")
-    var occupation: String
+    @Argument(help: "Your occupation.")
+    var occupation: String = "--"
 
-    @Option(default: "John", help: "Your name.")
-    var name: String
+    @Option(help: "Your name.")
+    var name: String = "John"
 
     @Option(default: "Winston", help: "Your middle name.")
     var middleName: String?
 
-    @Option(default: 20, help: "Your age.")
-    var age: Int
+    @Option(help: "Your age.")
+    var age: Int = 20
 
-    @Option(default: false, help: "Whether logging is enabled.")
-    var logging: Bool
+    @Option(help: "Whether logging is enabled.")
+    var logging: Bool = false
 
-    @Flag(default: .optional, help: "Vegan diet.")
-    var nda: OptionFlags
+    @Option(parsing: .upToNextOption, help: ArgumentHelp("Your lucky numbers.", valueName: "numbers"))
+    var lucky: [Int] = [7, 14]
 
-    @Option(default: .bachelor, help: "Your degree.", transform: Degree.degreeTransform)
-    var degree: Degree
+    @Flag(help: "Vegan diet.")
+    var nda: OptionFlags = .optional
 
-    @Option(default: URL(string: FileManager.default.currentDirectoryPath)!, help: "Directory.")
-    var directory: URL
+    @Option(help: "Your degree.", transform: Degree.degreeTransform)
+    var degree: Degree = .bachelor
+
+    @Option(help: "Directory.")
+    var directory: URL = URL(string: FileManager.default.currentDirectoryPath)!
   }
 
   func testHelpWithDefaultValues() {
     AssertHelp(for: D.self, equals: """
-            USAGE: d [<occupation>] [--name <name>] [--middle-name <middle-name>] [--age <age>] [--logging <logging>] [--optional] [--required] [--degree <degree>] [--directory <directory>]
+            USAGE: d [<occupation>] [--name <name>] [--middle-name <middle-name>] [--age <age>] [--logging <logging>] [--lucky <numbers> ...] [--optional] [--required] [--degree <degree>] [--directory <directory>]
 
             ARGUMENTS:
               <occupation>            Your occupation. (default: --)
@@ -172,6 +174,7 @@ extension HelpGenerationTests {
                                       Your middle name. (default: Winston)
               --age <age>             Your age. (default: 20)
               --logging <logging>     Whether logging is enabled. (default: false)
+              --lucky <numbers>       Your lucky numbers. (default: 7, 14)
               --optional/--required   Vegan diet. (default: optional)
               --degree <degree>       Your degree. (default: bachelor)
               --directory <directory> Directory. (default: current directory)
@@ -180,18 +183,35 @@ extension HelpGenerationTests {
             """)
   }
 
-  enum OutputBehaviour: String, CaseIterable { case stats, count, list }
   struct E: ParsableCommand {
-    @Flag(name: .shortAndLong, help: "Change the program output")
+    enum OutputBehaviour: String, EnumerableFlag {
+      case stats, count, list
+
+      static func name(for value: OutputBehaviour) -> NameSpecification {
+        .shortAndLong
+      }
+    }
+
+    @Flag(help: "Change the program output")
     var behaviour: OutputBehaviour
   }
+
   struct F: ParsableCommand {
-    @Flag(name: .short, default: .list, help: "Change the program output")
-    var behaviour: OutputBehaviour
+    enum OutputBehaviour: String, EnumerableFlag {
+      case stats, count, list
+
+      static func name(for value: OutputBehaviour) -> NameSpecification {
+        .short
+      }
+    }
+
+    @Flag(help: "Change the program output")
+    var behaviour: OutputBehaviour = .list
   }
+
   struct G: ParsableCommand {
     @Flag(inversion: .prefixedNo, help: "Whether to flag")
-    var flag: Bool
+    var flag: Bool = false
   }
 
   func testHelpWithMutuallyExclusiveFlags() {
@@ -223,7 +243,7 @@ extension HelpGenerationTests {
 
                """)
   }
-  
+
   struct H: ParsableCommand {
     struct CommandWithVeryLongName: ParsableCommand {}
     struct ShortCommand: ParsableCommand {
@@ -233,24 +253,24 @@ extension HelpGenerationTests {
       static var configuration: CommandConfiguration = CommandConfiguration(abstract: "Test long command name.")
     }
     struct AnotherCommand: ParsableCommand {
-      @Option(default: nil)
+      @Option()
       var someOptionWithVeryLongName: String?
-      
-      @Option(default: nil)
+
+      @Option()
       var option: String?
-      
-      @Argument(default: "", help: "This is an argument with a long name.")
-      var argumentWithVeryLongNameAndHelp: String
-      
-      @Argument(default: "")
-      var argumentWithVeryLongName: String
-      
-      @Argument(default: "")
-      var argument: String
+
+      @Argument(help: "This is an argument with a long name.")
+      var argumentWithVeryLongNameAndHelp: String = ""
+
+      @Argument
+      var argumentWithVeryLongName: String = ""
+
+      @Argument
+      var argument: String = ""
     }
     static var configuration = CommandConfiguration(subcommands: [CommandWithVeryLongName.self,ShortCommand.self,AnotherCommandWithVeryLongName.self,AnotherCommand.self])
   }
-  
+
   func testHelpWithSubcommands() {
     AssertHelp(for: H.self, equals: """
     USAGE: h <subcommand>
@@ -265,10 +285,11 @@ extension HelpGenerationTests {
                               Test long command name.
       another-command
 
+      See 'h help <subcommand>' for detailed help.
     """)
-    
-    AssertHelp(for: H.AnotherCommand.self, equals: """
-    USAGE: another-command [--some-option-with-very-long-name <some-option-with-very-long-name>] [--option <option>] [<argument-with-very-long-name-and-help>] [<argument-with-very-long-name>] [<argument>]
+
+    AssertHelp(for: H.AnotherCommand.self, root: H.self, equals: """
+    USAGE: h another-command [--some-option-with-very-long-name <some-option-with-very-long-name>] [--option <option>] [<argument-with-very-long-name-and-help>] [<argument-with-very-long-name>] [<argument>]
 
     ARGUMENTS:
       <argument-with-very-long-name-and-help>
@@ -298,5 +319,120 @@ extension HelpGenerationTests {
 
     """)
 
+  }
+
+  struct J: ParsableCommand {
+    static var configuration = CommandConfiguration(discussion: "test")
+  }
+
+  func testOverviewButNoAbstractSpacing() {
+    let renderedHelp = HelpGenerator(J.self).rendered()
+    AssertEqualStringsIgnoringTrailingWhitespace(renderedHelp, """
+    OVERVIEW:
+    test
+
+    USAGE: j
+
+    OPTIONS:
+      -h, --help              Show help information.
+
+    """)
+  }
+
+  struct K: ParsableCommand {
+    @Argument(help: "A list of paths.")
+    var paths: [String] = []
+
+    func validate() throws {
+      if paths.isEmpty {
+        throw ValidationError("At least one path must be specified.")
+      }
+    }
+  }
+
+  func testHelpWithNoValueForArray() {
+    AssertHelp(for: K.self, equals: """
+    USAGE: k [<paths> ...]
+
+    ARGUMENTS:
+      <paths>                 A list of paths.
+
+    OPTIONS:
+      -h, --help              Show help information.
+
+    """)
+  }
+
+  struct L: ParsableArguments {
+    @Option(
+      name: [.short, .customLong("remote"), .customLong("remote"), .short, .customLong("when"), .long, .customLong("other", withSingleDash: true), .customLong("there"), .customShort("x"), .customShort("y")],
+      help: "Help Message")
+    var time: String?
+  }
+
+  func testHelpWithMultipleCustomNames() {
+    AssertHelp(for: L.self, equals: """
+    USAGE: l [--remote <remote>]
+
+    OPTIONS:
+      -t, -x, -y, --remote, --when, --time, -other, --there <remote>
+                              Help Message
+      -h, --help              Show help information.
+
+    """)
+  }
+
+  struct M: ParsableCommand {
+  }
+  struct N: ParsableCommand {
+    static var configuration = CommandConfiguration(subcommands: [M.self], defaultSubcommand: M.self)
+  }
+
+  func testHelpWithDefaultCommand() {
+    AssertHelp(for: N.self, equals: """
+    USAGE: n <subcommand>
+
+    OPTIONS:
+      -h, --help              Show help information.
+
+    SUBCOMMANDS:
+      m (default)
+
+      See 'n help <subcommand>' for detailed help.
+    """)
+  }
+
+  enum O: String, ExpressibleByArgument {
+    case small
+    case medium
+    case large
+
+    init?(argument: String) {
+      guard let result = Self(rawValue: argument) else {
+        return nil
+      }
+      self = result
+    }
+  }
+  struct P: ParsableArguments {
+    @Option(name: [.short], help: "Help Message")
+    var o: [O] = [.small, .medium]
+
+    @Argument(help: "Help Message")
+    var remainder: [O] = [.large]
+  }
+
+  func testHelpWithDefaultValueForArray() {
+    AssertHelp(for: P.self, equals: """
+    USAGE: p [-o <o> ...] [<remainder> ...]
+
+    ARGUMENTS:
+      <remainder>             Help Message (default: large)
+
+    OPTIONS:
+      -o <o>                  Help Message (default: small, medium)
+      -h, --help              Show help information.
+
+    """)
   }
 }

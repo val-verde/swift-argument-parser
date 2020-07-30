@@ -12,7 +12,7 @@
 internal struct HelpGenerator {
   static var helpIndent = 2
   static var labelColumnWidth = 26
-  static var screenWidth: Int {
+  static var systemScreenWidth: Int {
     _screenWidthOverride ?? _terminalSize().width
   }
   
@@ -21,7 +21,7 @@ internal struct HelpGenerator {
   struct Usage {
     var components: [String]
     
-    var rendered: String {
+    func rendered(screenWidth: Int) -> String {
       components
         .joined(separator: "\n")
     }
@@ -37,13 +37,13 @@ internal struct HelpGenerator {
         String(repeating: " ", count: HelpGenerator.helpIndent) + label
       }
       
-      var rendered: String {
+      func rendered(screenWidth: Int) -> String {
         let paddedLabel = self.paddedLabel
         let wrappedAbstract = self.abstract
-          .wrapped(to: HelpGenerator.screenWidth, wrappingIndent: HelpGenerator.labelColumnWidth)
+          .wrapped(to: screenWidth, wrappingIndent: HelpGenerator.labelColumnWidth)
         let wrappedDiscussion = self.discussion.isEmpty
           ? ""
-          : self.discussion.wrapped(to: HelpGenerator.screenWidth, wrappingIndent: HelpGenerator.helpIndent * 4) + "\n"
+          : self.discussion.wrapped(to: screenWidth, wrappingIndent: HelpGenerator.helpIndent * 4) + "\n"
         let renderedAbstract: String = {
           guard !abstract.isEmpty else { return "" }
           if paddedLabel.count < HelpGenerator.labelColumnWidth {
@@ -82,10 +82,10 @@ internal struct HelpGenerator {
     var discussion: String = ""
     var isSubcommands: Bool = false
     
-    var rendered: String {
+    func rendered(screenWidth: Int) -> String {
       guard !elements.isEmpty else { return "" }
       
-      let renderedElements = elements.map { $0.rendered }.joined()
+      let renderedElements = elements.map { $0.rendered(screenWidth: screenWidth) }.joined()
       return "\(String(describing: header).uppercased()):\n"
         + renderedElements
     }
@@ -96,6 +96,7 @@ internal struct HelpGenerator {
     var content: String
   }
   
+  var commandStack: [ParsableCommand.Type]
   var abstract: String
   var usage: Usage
   var sections: [Section]
@@ -107,8 +108,14 @@ internal struct HelpGenerator {
     }
     
     let currentArgSet = ArgumentSet(currentCommand)
-    
-    let toolName = commandStack.map { $0._commandName }.joined(separator: " ")
+    self.commandStack = commandStack
+
+    // Build the tool name and subcommand name from the command configuration
+    var toolName = commandStack.map { $0._commandName }.joined(separator: " ")
+    if let superName = commandStack.first!.configuration._superCommandName {
+      toolName = "\(superName) \(toolName)"
+    }
+
     var usageString = UsageGenerator(toolName: toolName, definition: [currentArgSet]).synopsis
     if !currentCommand.configuration.subcommands.isEmpty {
       if usageString.last != " " { usageString += " " }
@@ -117,7 +124,10 @@ internal struct HelpGenerator {
     
     self.abstract = currentCommand.configuration.abstract
     if !currentCommand.configuration.discussion.isEmpty {
-      self.abstract += "\n\n\(currentCommand.configuration.discussion)"
+      if !self.abstract.isEmpty {
+        self.abstract += "\n"
+      }
+      self.abstract += "\n\(currentCommand.configuration.discussion)"
     }
     
     self.usage = Usage(components: [usageString])
@@ -125,6 +135,10 @@ internal struct HelpGenerator {
     self.discussionSections = []
   }
   
+  init(_ type: ParsableArguments.Type) {
+    self.init(commandStack: [type.asCommand])
+  }
+
   static func generateSections(commandStack: [ParsableCommand.Type]) -> [Section] {
     var positionalElements: [Section.Element] = []
     var optionElements: [Section.Element] = []
@@ -204,11 +218,16 @@ internal struct HelpGenerator {
       optionElements.append(.init(label: helpLabels, abstract: "Show help information."))
     }
 
+    let configuration = commandStack.last!.configuration
     let subcommandElements: [Section.Element] =
-      commandStack.last!.configuration.subcommands.compactMap { command in
+      configuration.subcommands.compactMap { command in
         guard command.configuration.shouldDisplay else { return nil }
+        var label = command._commandName
+        if command == configuration.defaultSubcommand {
+            label += " (default)"
+        }
         return Section.Element(
-          label: command._commandName,
+          label: label,
           abstract: command.configuration.abstract)
     }
     
@@ -219,24 +238,46 @@ internal struct HelpGenerator {
     ]
   }
   
-  var usageMessage: String {
-    "Usage: \(usage.rendered)"
+  func usageMessage(screenWidth: Int? = nil) -> String {
+    let screenWidth = screenWidth ?? HelpGenerator.systemScreenWidth
+    return "Usage: \(usage.rendered(screenWidth: screenWidth))"
   }
   
-  var rendered: String {
+  var includesSubcommands: Bool {
+    guard let subcommandSection = sections.first(where: { $0.header == .subcommands })
+      else { return false }
+    return !subcommandSection.elements.isEmpty
+  }
+  
+  func rendered(screenWidth: Int? = nil) -> String {
+    let screenWidth = screenWidth ?? HelpGenerator.systemScreenWidth
     let renderedSections = sections
-      .map { $0.rendered }
+      .map { $0.rendered(screenWidth: screenWidth) }
       .filter { !$0.isEmpty }
       .joined(separator: "\n")
     let renderedAbstract = abstract.isEmpty
       ? ""
-      : "OVERVIEW: \(abstract)".wrapped(to: HelpGenerator.screenWidth) + "\n\n"
+      : "OVERVIEW: \(abstract)".wrapped(to: screenWidth) + "\n\n"
+    
+    var helpSubcommandMessage: String = ""
+    if includesSubcommands {
+      var names = commandStack.map { $0._commandName }
+      if let superName = commandStack.first!.configuration._superCommandName {
+        names.insert(superName, at: 0)
+      }
+      names.insert("help", at: 1)
+
+      helpSubcommandMessage = """
+
+          See '\(names.joined(separator: " ")) <subcommand>' for detailed help.
+        """
+    }
     
     return """
     \(renderedAbstract)\
-    USAGE: \(usage.rendered)
+    USAGE: \(usage.rendered(screenWidth: screenWidth))
     
-    \(renderedSections)
+    \(renderedSections)\(helpSubcommandMessage)
     """
   }
 }
