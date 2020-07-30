@@ -15,7 +15,7 @@
 ///
 /// This is usually an index into the `SplitArguments`.
 /// In some cases it can be multiple indices.
-struct InputOrigin: Equatable, ExpressibleByArrayLiteral {
+internal struct InputOrigin: Equatable, ExpressibleByArrayLiteral {
   enum Element: Comparable, Hashable {
     case argumentIndex(SplitArguments.Index)
   }
