@@ -18,7 +18,7 @@ import CRT
 #endif
 
 #if os(Windows)
-import let WinSDK.ERROR_BAD_ARGUMENTS
+internal let ERROR_BAD_ARGUMENTS = Int32(160)
 #endif
 
 /// An error type that is presented to the user as an error with parsing their
