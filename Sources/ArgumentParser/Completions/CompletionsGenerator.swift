@@ -15,6 +15,7 @@ import Glibc
 import Darwin
 #elseif canImport(CRT)
 import CRT
+import WinSDK
 #endif
 
 /// A shell for which the parser can generate a completion script.
