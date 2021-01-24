@@ -15,6 +15,7 @@ import Glibc
 import Darwin
 #elseif canImport(CRT)
 import CRT
+import WinSDK
 #endif
 
 #if os(Windows)

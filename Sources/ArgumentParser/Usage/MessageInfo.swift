@@ -11,6 +11,10 @@
 
 @_implementationOnly import Foundation
 
+#if canImport(WinSDK)
+import WinSDK
+#endif
+
 enum MessageInfo {
   case help(text: String)
   case validation(message: String, usage: String, help: String)
